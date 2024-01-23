@@ -275,6 +275,19 @@ void parpadearIconoWiFi(int veces) {
   // Dibuja el icono de WiFi una vez más para dejarlo encendido
   tft.drawBitmap(140, 5, wifi, 16, 16, ST77XX_GREEN);
 }
+void parpadearFallaIconoWiFi(int veces) {
+  for (int i = 0; i < veces; i++) {
+    // Dibuja el icono de WiFi
+    tft.drawBitmap(140, 5, wifi, 16, 16, ST77XX_RED); // Dibuja el icono de WiFi
+    delay(500); // Espera medio segundo
+
+    // Borra el icono de WiFi
+    tft.fillRect(140, 5, 16, 16, ST77XX_BLACK); // Borra el icono de WiFi
+    delay(500); // Espera medio segundo
+  }
+  // Dibuja el icono de WiFi una vez más para dejarlo encendido
+  tft.drawBitmap(140, 5, wifi, 16, 16, ST77XX_RED);
+}
 
 void enviarDatos(String temp, String hum) {
   // Asegúrate de que estás conectado a WiFi antes de intentar enviar datos
@@ -301,6 +314,7 @@ void enviarDatos(String temp, String hum) {
     } else {
       Serial.print("Error en la solicitud: ");
       Serial.println(http.errorToString(httpCode));
+      parpadearFallaIconoWiFi(3);
     }
 
     http.end(); // Cierra la conexión
