@@ -33,6 +33,8 @@ String humidity = ""; // Variable para la humedad
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
+bool WifiStatus = true;
+
 static const unsigned char PROGMEM wifi[] =
 {
   0b00000000, 0b00000000,
@@ -232,6 +234,23 @@ void pantalla_principal() {
   tft.drawFastHLine(0, 46, 160, ST77XX_BLUE); // x,y
 }
 
+void wifiFalla(){
+  WifiStatus = false;
+  tft.fillScreen(ST77XX_BLACK);
+  tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
+  tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
+
+  tft.setCursor(25, 64);   // x, y
+  tft.setTextColor(ST77XX_RED);
+  tft.setTextSize(1);
+  tft.println("Conecte a red");
+
+  tft.setCursor(25, 84);   // x, y
+  tft.setTextColor(ST77XX_RED);
+  tft.setTextSize(1);
+  tft.println("Wifi");
+}
+
 void startWiFiManager() {
   // Inicia WiFiManager para una nueva configuración
   wiFiManager.startConfigPortal("ControlWareTemperatureSensor", "12345678");
@@ -320,6 +339,7 @@ void enviarDatos(String temp, String hum) {
     http.end(); // Cierra la conexión
   } else {
     Serial.println("No conectado a WiFi");
+    wifiFalla();
   }
 }
 
@@ -337,9 +357,9 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.print("  °C");
 
   tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
-  tft.print("Hum:     ");
+  tft.print("Hum:      ");
   tft.print(humidity);
-  tft.print("  %");
+  tft.print(" %");
   temperature = "";
   humidity = "";
 
@@ -387,6 +407,11 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   Serial.print(humidity);
   Serial.println("%");
 
+  if(WifiStatus == false) {
+    tft.fillScreen(ST77XX_BLACK);
+    pantalla_principal();
+  }
+
   // Imprimir en la pantalla TFT
   tft.setCursor(3, 80); // Ajusta las coordenadas según sea necesario
   tft.setTextColor(ST77XX_WHITE);
@@ -396,9 +421,9 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.print("  °C");
 
   tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
-  tft.print("Hum:     ");
+  tft.print("Hum:      ");
   tft.print(humidity);
-  tft.print("  %");
+  tft.print(" %");
 
   enviarDatos(temperature, humidity);
 }
@@ -416,19 +441,8 @@ void setup() {
   Serial.begin(115200);
   tft.initR(INITR_BLACKTAB);   // Inicializa la pantalla TFT
   tft.setRotation(1);          // Establece la orientación de la pantalla
-  tft.fillScreen(ST77XX_BLACK);
-  tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
-  tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
-
-  tft.setCursor(25, 64);   // x, y
-  tft.setTextColor(ST77XX_RED);
-  tft.setTextSize(1);
-  tft.println("Conecte a red");
-
-  tft.setCursor(25, 84);   // x, y
-  tft.setTextColor(ST77XX_RED);
-  tft.setTextSize(1);
-  tft.println("Wifi");
+  
+  wifiFalla();
     
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan();
