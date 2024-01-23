@@ -323,7 +323,6 @@ void enviarDatos(String temp, String hum) {
   }
 }
 
-
 void TakeTemp(String macAddresses[], int numAddresses) {
 
   // Iniciar escaneo BLE
