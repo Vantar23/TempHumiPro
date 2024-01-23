@@ -3,23 +3,10 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
-
 #include <HTTPClient.h>
-
-// Variables y configuraciones iniciales
-const int buttonPin = 35; // Pin del botón
-unsigned long buttonPressTime = 0; // Tiempo cuando se presiona el botón
-bool isPressing = false; // Estado de presión del botón
-int scanTime = 60; // Tiempo de escaneo en segundos
-BLEScan* pBLEScan;
-String macAddresses[] = {"f2:73:7a:e1:c4:09"};
-int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
-WiFiManager wiFiManager;
-
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
-
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
 
@@ -28,6 +15,21 @@ WiFiManager wiFiManager;
 #define TFT_DC     21  // Data/Command
 #define TFT_MOSI   19  // DIN
 #define TFT_SCLK   18  // CLK
+
+// Configuración de botón y escaneo BLE
+const int buttonPin = 35;              // Pin del botón
+unsigned long buttonPressTime = 0;     // Tiempo cuando se presiona el botón
+bool isPressing = false;               // Estado del botón (presionado/no presionado)
+int scanTime = 60;                     // Tiempo de escaneo en segundos
+BLEScan* pBLEScan;                     // Puntero a la instancia de BLEScan
+// Dispositivos Bluetooth LE a buscar
+String macAddresses[] = {"f2:73:7a:e1:c4:09"};
+int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
+// Gestión de la configuración WiFi
+WiFiManager wiFiManager;               // Instancia de WiFiManager
+
+String temperature = ""; // Variable para la temperatura
+String humidity = ""; // Variable para la humedad
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
@@ -223,19 +225,11 @@ static const unsigned char PROGMEM logo_avimex [] = {
 
 };
 
-
-  String temperature = "";
-  String humidity = ""; // Nueva variable para la humedad
-
 void pantalla_principal() {
   tft.fillScreen(ST77XX_BLACK); // Limpia la pantalla con color negro
   tft.drawBitmap(5, 5, logo_avimex, 80, 23, ST77XX_WHITE);  // logo avimex
   tft.drawFastHLine(0, 45, 160, ST77XX_BLUE); // x,y
   tft.drawFastHLine(0, 46, 160, ST77XX_BLUE); // x,y
-}
-
-void loop() {
-  // Vacío, ya que la lógica está en las tareas de FreeRTOS
 }
 
 void startWiFiManager() {
@@ -312,7 +306,6 @@ void enviarDatos(String temp, String hum) {
     http.end(); // Cierra la conexión
   } else {
     Serial.println("No conectado a WiFi");
-    
   }
 }
 
@@ -373,7 +366,6 @@ void TakeTemp(String macAddresses[], int numAddresses) {
       }
     }
   }
-  
 
   // Imprimir temperatura y humedad
   Serial.print("Temperatura: ");
@@ -381,7 +373,6 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   Serial.print("°C, Humedad: ");
   Serial.print(humidity);
   Serial.println("%");
-
 
   // Imprimir en la pantalla TFT
   tft.setCursor(3, 80); // Ajusta las coordenadas según sea necesario
@@ -396,7 +387,7 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.print(humidity);
   tft.print("  %");
 
-   enviarDatos(temperature, humidity);
+  enviarDatos(temperature, humidity);
 }
 
 void TakeTempTask(void * parameter) {
@@ -406,30 +397,26 @@ void TakeTempTask(void * parameter) {
   }
 }
 
-
 void setup() {  
   pinMode(buttonPin, INPUT_PULLUP);
 
   Serial.begin(115200);
   tft.initR(INITR_BLACKTAB);   // Inicializa la pantalla TFT
   tft.setRotation(1);          // Establece la orientación de la pantalla
-    tft.fillScreen(ST77XX_BLACK);
-    tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
-    tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
+  tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
 
-    tft.setCursor(25, 64);   // x, y
-    tft.setTextColor(ST77XX_RED);
-    tft.setTextSize(1);
-    tft.println("Conecte a red");
+  tft.setCursor(25, 64);   // x, y
+  tft.setTextColor(ST77XX_RED);
+  tft.setTextSize(1);
+  tft.println("Conecte a red");
 
-    tft.setCursor(25, 84);   // x, y
-    tft.setTextColor(ST77XX_RED);
-    tft.setTextSize(1);
-    tft.println("Wifi");
-
-
-
-
+  tft.setCursor(25, 84);   // x, y
+  tft.setTextColor(ST77XX_RED);
+  tft.setTextSize(1);
+  tft.println("Wifi");
+    
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setActiveScan(true);
@@ -457,4 +444,8 @@ void setup() {
   // Crear tareas para FreeRTOS
   xTaskCreatePinnedToCore(ButtonWifiTask, "ButtonWifiTask", 10000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(TakeTempTask, "TakeTempTask", 10000, NULL, 1, NULL, 1);
+}
+
+void loop() {
+  // Vacío, ya que la lógica está en las tareas de FreeRTOS
 }
