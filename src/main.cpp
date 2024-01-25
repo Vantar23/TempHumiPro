@@ -365,6 +365,7 @@ void TakeTemp(String macAddresses[], int numAddresses) {
           if (hexStr.length() >= 10) {
             // Extracción de la temperatura
             String tempChars = hexStr.substring(7, 9);
+            Serial.println(tempChars);
             int16_t tempValue = strtol(tempChars.c_str(), NULL, 16);
             if (tempValue & 0x80) {
               tempValue = -1 * (~tempValue + 1);
@@ -374,6 +375,7 @@ void TakeTemp(String macAddresses[], int numAddresses) {
 
             // Extracción de la humedad
             String humChars = hexStr.substring(10, 12); // Modificado para capturar los caracteres correctos
+            Serial.println(humChars);
             long humValue = strtol(humChars.c_str(), NULL, 16);
             float humResult = humValue / 10.0;
             humidity += String(humResult);
