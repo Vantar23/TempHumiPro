@@ -1,5 +1,7 @@
 #include <Arduino.h>
-#include <WiFiManager.h> 
+#include <WebServer.h>
+#include "WiFiManager.h"
+#include <ESP.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
@@ -9,6 +11,8 @@
 #include <SPI.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
+
+WebServer server(80);
 
 #define TFT_CS     22  // Chip select
 #define TFT_RST    12  // Reset
@@ -20,16 +24,23 @@
 const int buttonPin = 35;              // Pin del botón
 unsigned long buttonPressTime = 0;     // Tiempo cuando se presiona el botón
 bool isPressing = false;               // Estado del botón (presionado/no presionado)
-int scanTime = 60;                     // Tiempo de escaneo en segundos
+int scanTime = 30;                     // Tiempo de escaneo en segundos
 BLEScan* pBLEScan;                     // Puntero a la instancia de BLEScan
 // Dispositivos Bluetooth LE a buscar
-String macAddresses[] = {"f2:73:7a:e1:c4:09"};
+String macAddresses[] = {"ca:9e:f7:b3:dd:f4", "d4:4a:a3:21:e6:b5", "ce:13:82:a3:60:3b", "c2:31:9b:3a:53:6f", "eb:43:f1:01:13:c9", "f2:b2:9a:a5:ab:38", "c0:c2:41:41:0b:9f", "e2:8a:f3:c7:7b:2e", "c2:f5:ea:78:a8:0e", "c2:b3:bd:07:3e:16", "de:12:d2:0b:3a:1a", "d9:80:b8:55:e2:94"};
 int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
 // Gestión de la configuración WiFi
+
+String humidityMacAddresses[] = {"ca:9e:f7:b3:dd:f4", "d4:4a:a3:21:e6:b5", "ce:13:82:a3:60:3b", "c2:31:9b:3a:53:6f", "eb:43:f1:01:13:c9", "f2:b2:9a:a5:ab:38", "c0:c2:41:41:0b:9f", "e2:8a:f3:c7:7b:2e", "c2:f5:ea:78:a8:0e", "c2:b3:bd:07:3e:16", "de:12:d2:0b:3a:1a", "d9:80:b8:55:e2:94"}; // Reemplaza esto con la dirección MAC real
+int numberOfHumidityDevices = sizeof(humidityMacAddresses) / sizeof(humidityMacAddresses[0]);
+
+bool stopScan = false;
 WiFiManager wiFiManager;               // Instancia de WiFiManager
 
 String temperature = ""; // Variable para la temperatura
 String humidity = ""; // Variable para la humedad
+
+bool pantallaPrincipal = false;
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
@@ -230,11 +241,30 @@ void pantalla_principal() {
   tft.drawBitmap(5, 5, logo_avimex, 80, 23, ST77XX_WHITE);  // logo avimex
   tft.drawFastHLine(0, 45, 160, ST77XX_BLUE); // x,y
   tft.drawFastHLine(0, 46, 160, ST77XX_BLUE); // x,y
+
+  tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_BLACK);
+  tft.drawBitmap(140, 5, wifi, 16, 16, ST77XX_GREEN);   // despliega wifi ok
+}
+
+void pantalla_falla(String text){
+        tft.fillScreen(ST77XX_BLACK);
+      tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
+      tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
+
+      tft.setCursor(25, 64);   // x, y
+      tft.setTextColor(ST77XX_RED);
+      tft.setTextSize(1);
+      tft.println(text);
+
+      tft.setCursor(25, 84);   // x, y
+      tft.setTextColor(ST77XX_RED);
+      tft.setTextSize(1);
+      tft.println("Wifi");
 }
 
 void startWiFiManager() {
   // Inicia WiFiManager para una nueva configuración
-  wiFiManager.startConfigPortal("ControlWareTemperatureSensor", "12345678");
+  wiFiManager.startConfigPortal("ControlWareTempHumiPro");
 }
 
 void ButtonWifiTask(void * parameter) {
@@ -245,15 +275,14 @@ void ButtonWifiTask(void * parameter) {
         isPressing = true;
         buttonPressTime = millis();
       } else if (millis() - buttonPressTime > 7000) {
-        Serial.println("Botón presionado por 7 segundos. Borrando credenciales WiFi y reiniciando WiFiManager...");
+        Serial.println("Botón presionado por 7 segundos. Borrando credenciales WiFi y reiniciando Equipo...");
         isPressing = false;
-
         // Desconectar y borrar credenciales WiFi anteriores
         WiFi.disconnect(true);
         delay(1000); // Pequeña pausa para asegurar que se complete la desconexión
-
-        // Iniciar WiFiManager
-        startWiFiManager();
+        wiFiManager.erase();
+        delay(1000); // Pequeña pausa para asegurar que se complete la desconexión
+        ESP.restart();
       }
     } else {
       isPressing = false;
@@ -293,12 +322,12 @@ void enviarDatos(String temp, String hum) {
   // Asegúrate de que estás conectado a WiFi antes de intentar enviar datos
   if(WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String numero_dispositivo = "800"; // Ajusta según sea necesario
+    String numero_dispositivo = "000"; // Ajusta según sea necesario
     String mystring_status_pt100 = "OK"; // Ajusta según sea necesario
     String indicador_dispositivo = "2"; // Ajusta según sea necesario
 
     String url = "http://95.216.228.161/mccr_sensores/recibe_avimex.ashx?t=" + temp + "&h=" + hum + "&d=" + numero_dispositivo + "&e=" + mystring_status_pt100 + "&c=0" + "&indicador=" + indicador_dispositivo;
-    
+    Serial.println(url);
     http.begin(url); // Inicia la conexión
     int httpCode = http.GET(); // Realiza la solicitud GET
 
@@ -314,17 +343,18 @@ void enviarDatos(String temp, String hum) {
     } else {
       Serial.print("Error en la solicitud: ");
       Serial.println(http.errorToString(httpCode));
-      parpadearFallaIconoWiFi(3);
+      parpadearFallaIconoWiFi(5);
     }
 
     http.end(); // Cierra la conexión
   } else {
     Serial.println("No conectado a WiFi");
+    pantalla_falla("Reconectando");
+    pantallaPrincipal = false;
   }
 }
 
 void TakeTemp(String macAddresses[], int numAddresses) {
-
   // Iniciar escaneo BLE
   BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
   Serial.println("Escaneo hecho!");
@@ -336,12 +366,7 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.print(temperature);
   tft.print("  °C");
 
-  tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
-  tft.print("Hum:     ");
-  tft.print(humidity);
-  tft.print("  %");
   temperature = "";
-  humidity = "";
 
   for (int i = 0; i < foundDevices.getCount(); i++) {
     BLEAdvertisedDevice advertisedDevice = foundDevices.getDevice(i);
@@ -360,32 +385,25 @@ void TakeTemp(String macAddresses[], int numAddresses) {
 
           if (hexStr.length() >= 10) {
             // Extracción de la temperatura
-            String tempChars = hexStr.substring(8, 10);
-            int16_t tempValue = strtol(tempChars.c_str(), NULL, 16);
-            if (tempValue & 0x80) {
-              tempValue = -1 * (~tempValue + 1);
-            }
+          String tempChars = hexStr.substring(7, 10); // Ajustar según la posición correcta de los datos de temperatura
+          int16_t tempValue = strtol(tempChars.c_str(), NULL, 16);
+          // Verificar si el valor es negativo
+          if (tempValue & 0x800) { // Asumiendo que los datos son 12-bit, ajustar la máscara según el tamaño real de los datos
+              tempValue = tempValue | ~0xFFF; // Extender el signo para un entero de 16 bits
+          }  
             float tempResult = tempValue / 10.0;
             temperature += String(tempResult);
-
-            // Extracción de la humedad
-            String humChars = hexStr.substring(11, 14); // Modificado para capturar los caracteres correctos
-            long humValue = strtol(humChars.c_str(), NULL, 16);
-            float humResult = humValue / 10.0;
-            humidity += String(humResult);
+            temperature += ",";
           }
         }
         break;
       }
     }
   }
-
+  temperature = temperature.substring(0, temperature.length() - 1);
   // Imprimir temperatura y humedad
   Serial.print("Temperatura: ");
-  Serial.print(temperature);
-  Serial.print("°C, Humedad: ");
-  Serial.print(humidity);
-  Serial.println("%");
+  Serial.println(temperature);
 
   // Imprimir en la pantalla TFT
   tft.setCursor(3, 80); // Ajusta las coordenadas según sea necesario
@@ -394,21 +412,86 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.print("Temp:    ");
   tft.print(temperature);
   tft.print("  °C");
+}
+
+void TakeHumidity(String humidityMacAddresses[], int numHumidityAddresses) {
+  // Iniciar escaneo BLE
+  BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
+  Serial.println("Escaneo de humedad hecho!");
+  tft.setTextColor(ST77XX_BLACK);
+  tft.setTextSize(1);
 
   tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
   tft.print("Hum:     ");
   tft.print(humidity);
   tft.print("  %");
 
+  humidity = ""; // Asegúrate de restablecer la variable de humedad
+
+  for (int i = 0; i < foundDevices.getCount(); i++) {
+    BLEAdvertisedDevice advertisedDevice = foundDevices.getDevice(i);
+
+    for (int j = 0; j < numHumidityAddresses; j++) {
+      if (String(advertisedDevice.getAddress().toString().c_str()) == humidityMacAddresses[j]) {
+        if (advertisedDevice.haveServiceData()) {
+          std::string serviceData = advertisedDevice.getServiceData();
+          uint8_t* pData = (uint8_t*)serviceData.data();
+          String hexStr;
+          for (int k = 0; k < serviceData.length(); k++) {
+            char buf[3];
+            sprintf(buf, "%02X", pData[k]);
+            hexStr += buf;
+          }
+
+          // Aquí necesitas ajustar la lógica para extraer la humedad
+          // basándote en cómo el dispositivo codifica esos datos
+          // Por ejemplo, si la humedad se codifica en los primeros dos bytes:
+          if (hexStr.length() >= 10) {
+              // Extracción de la humedad
+            String humChars = hexStr.substring(11, 14); // Modificado para capturar los caracteres correctos
+            long humValue = strtol(humChars.c_str(), NULL, 16);
+            float humResult = humValue / 10.0;
+            humidity += String(humResult);
+            humidity += ",";
+          }
+        }
+        break;
+      }
+    }
+  }
+  humidity = humidity.substring(0, humidity.length() - 1);
+  // Imprimir humedad
+  Serial.print("Humedad: ");
+  Serial.print(humidity);
+  Serial.println("%");
+
+  tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(1);
+  tft.print("Hum:     ");
+  tft.print(humidity);
+  tft.print("  %");
   enviarDatos(temperature, humidity);
+
 }
 
 void TakeTempTask(void * parameter) {
   for (;;) {
-    TakeTemp(macAddresses, numberOfDevices);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    if(WiFi.status() == WL_CONNECTED) {
+      if (pantallaPrincipal == false) {
+          pantalla_principal();
+          pantallaPrincipal = true;
+      }
+      TakeTemp(macAddresses, numberOfDevices); // Llama primero a la función para tomar la temperatura
+      TakeHumidity(humidityMacAddresses, numberOfHumidityDevices); // Luego llama a la función para tomar la humedad
+    } else {
+       
+       Serial.println("Reintentando conexión wifi...");
+    }
+  vTaskDelay(10000 / portTICK_PERIOD_MS); // Ajusta el tiempo de espera según sea necesario
   }
 }
+
 
 void setup() {  
   pinMode(buttonPin, INPUT_PULLUP);
@@ -416,49 +499,29 @@ void setup() {
   Serial.begin(115200);
   tft.initR(INITR_BLACKTAB);   // Inicializa la pantalla TFT
   tft.setRotation(1);          // Establece la orientación de la pantalla
-  tft.fillScreen(ST77XX_BLACK);
-  tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
-  tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
 
-  tft.setCursor(25, 64);   // x, y
-  tft.setTextColor(ST77XX_RED);
-  tft.setTextSize(1);
-  tft.println("Conecte a red");
-
-  tft.setCursor(25, 84);   // x, y
-  tft.setTextColor(ST77XX_RED);
-  tft.setTextSize(1);
-  tft.println("Wifi");
-    
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setActiveScan(true);
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);
   WiFi.mode(WIFI_STA);
-
+  pantalla_falla("Conecte a red");
   // Intenta conectar automáticamente con las credenciales guardadas
-  if (!wiFiManager.autoConnect("ControlWareTemperatureSensor", "12345678")) {
+  if (!wiFiManager.autoConnect("ControlWareTempHumiPro")) {
     Serial.println("Failed to connect and hit timeout");
-    tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_RED);   // despliega wifi falla
   }
-  
   tft.setFont(&FreeSansBold9pt7b);
   // Si se conecta exitosamente, imprime la dirección IP
   Serial.print("Connected to ");
   Serial.println(WiFi.SSID());
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
-  pantalla_principal();
-
-  tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_BLACK);
-  tft.drawBitmap(140, 5, wifi, 16, 16, ST77XX_GREEN);   // despliega wifi ok
-
   // Crear tareas para FreeRTOS
-  xTaskCreatePinnedToCore(ButtonWifiTask, "ButtonWifiTask", 10000, NULL, 1, NULL, 0);
+  //xTaskCreatePinnedToCore(ButtonWifiTask, "ButtonWifiTask", 10000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(TakeTempTask, "TakeTempTask", 10000, NULL, 1, NULL, 1);
+  
+  wiFiManager.setWiFiAutoReconnect(true);
 }
 
-void loop() {
-  // Vacío, ya que la lógica está en las tareas de FreeRTOS
-}
+void loop() {}
