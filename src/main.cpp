@@ -27,13 +27,12 @@ bool isPressing = false;               // Estado del botón (presionado/no presi
 int scanTime = 30;                     // Tiempo de escaneo en segundos
 BLEScan* pBLEScan;                     // Puntero a la instancia de BLEScan
 // Dispositivos Bluetooth LE a buscar
-String macAddresses[] = {"ca:9e:f7:b3:dd:f4", "d4:4a:a3:21:e6:b5", "ce:13:82:a3:60:3b", "c2:31:9b:3a:53:6f", "eb:43:f1:01:13:c9", "f2:b2:9a:a5:ab:38", "c0:c2:41:41:0b:9f", "e2:8a:f3:c7:7b:2e", "c2:f5:ea:78:a8:0e", "c2:b3:bd:07:3e:16", "de:12:d2:0b:3a:1a", "d9:80:b8:55:e2:94"};
+String macAddresses[] = {""};
+String humidityMacAddresses[] = {""};
 int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
-// Gestión de la configuración WiFi
-
-String humidityMacAddresses[] = {"ca:9e:f7:b3:dd:f4", "d4:4a:a3:21:e6:b5", "ce:13:82:a3:60:3b", "c2:31:9b:3a:53:6f", "eb:43:f1:01:13:c9", "f2:b2:9a:a5:ab:38", "c0:c2:41:41:0b:9f", "e2:8a:f3:c7:7b:2e", "c2:f5:ea:78:a8:0e", "c2:b3:bd:07:3e:16", "de:12:d2:0b:3a:1a", "d9:80:b8:55:e2:94"}; // Reemplaza esto con la dirección MAC real
 int numberOfHumidityDevices = sizeof(humidityMacAddresses) / sizeof(humidityMacAddresses[0]);
 
+// Gestión de la configuración WiFi
 bool stopScan = false;
 WiFiManager wiFiManager;               // Instancia de WiFiManager
 
@@ -322,7 +321,7 @@ void enviarDatos(String temp, String hum) {
   // Asegúrate de que estás conectado a WiFi antes de intentar enviar datos
   if(WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String numero_dispositivo = "000"; // Ajusta según sea necesario
+    String numero_dispositivo = "568"; // Ajusta según sea necesario
     String mystring_status_pt100 = "OK"; // Ajusta según sea necesario
     String indicador_dispositivo = "2"; // Ajusta según sea necesario
 
