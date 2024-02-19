@@ -23,7 +23,7 @@ bool isPressing = false;               // Estado del botón (presionado/no presi
 int scanTime = 60;                     // Tiempo de escaneo en segundos
 BLEScan* pBLEScan;                     // Puntero a la instancia de BLEScan
 // Dispositivos Bluetooth LE a buscar
-String macAddresses[] = {"f2:73:7a:e1:c4:09"};
+String macAddresses[] = {"fc:ab:79:f8:76:b6"};
 int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
 // Gestión de la configuración WiFi
 WiFiManager wiFiManager;               // Instancia de WiFiManager
@@ -312,7 +312,7 @@ void enviarDatos(String temp, String hum) {
   // Asegúrate de que estás conectado a WiFi antes de intentar enviar datos
   if(WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String numero_dispositivo = "800"; // Ajusta según sea necesario
+    String numero_dispositivo = "568"; // Ajusta según sea necesario
     String mystring_status_pt100 = "OK"; // Ajusta según sea necesario
     String indicador_dispositivo = "2"; // Ajusta según sea necesario
 
@@ -378,9 +378,13 @@ void TakeTemp(String macAddresses[], int numAddresses) {
             hexStr += buf;
           }
 
+          // Imprimir los datos en bruto en formato hexadecimal
+          Serial.print("Datos en bruto (HEX): ");
+          Serial.println(hexStr);
+
           if (hexStr.length() >= 10) {
             // Extracción de la temperatura
-            String tempChars = hexStr.substring(8, 10);
+            String tempChars = hexStr.substring(7, 9);
             int16_t tempValue = strtol(tempChars.c_str(), NULL, 16);
             if (tempValue & 0x80) {
               tempValue = -1 * (~tempValue + 1);
@@ -389,7 +393,7 @@ void TakeTemp(String macAddresses[], int numAddresses) {
             temperature += String(tempResult);
 
             // Extracción de la humedad
-            String humChars = hexStr.substring(11, 14); // Modificado para capturar los caracteres correctos
+            String humChars = hexStr.substring(10, 12); // Modificado para capturar los caracteres correctos
             long humValue = strtol(humChars.c_str(), NULL, 16);
             float humResult = humValue / 10.0;
             humidity += String(humResult);
