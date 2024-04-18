@@ -9,6 +9,7 @@
 #include <SPI.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
+#include <string.h> // Para usar strtok y otras funciones de manejo de cadenas
 
 #define TFT_CS     22  // Chip select
 #define TFT_RST    12  // Reset
@@ -16,14 +17,27 @@
 #define TFT_MOSI   19  // DIN
 #define TFT_SCLK   18  // CLK
 
+const int wdtTimeout = 20000;  //time in ms to trigger the watchdog
+hw_timer_t *timer = NULL;
+void IRAM_ATTR resetModule()
+{
+  ets_printf("reboot\n");
+  esp_restart();
+}
+
 // Configuración de botón y escaneo BLE
+String TempPayload;
+String Temp1Str;
+String Temp2Str;
+float Temp1;
+float Temp2;
 const int buttonPin = 35;              // Pin del botón
 unsigned long buttonPressTime = 0;     // Tiempo cuando se presiona el botón
 bool isPressing = false;               // Estado del botón (presionado/no presionado)
 int scanTime = 60;                     // Tiempo de escaneo en segundos
 BLEScan* pBLEScan;                     // Puntero a la instancia de BLEScan
 // Dispositivos Bluetooth LE a buscar
-String macAddresses[] = {"f2:73:7a:e1:c4:09"};
+String macAddresses[] = {"ef:58:67:9c:58:32", "de:1c:07:60:65:b2"};
 int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
 // Gestión de la configuración WiFi
 WiFiManager wiFiManager;               // Instancia de WiFiManager
@@ -32,6 +46,10 @@ String temperature = ""; // Variable para la temperatura
 String humidity = ""; // Variable para la humedad
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
+
+// Declaración de funciones
+String enviarDatos(String temp, String hum);
+void TakeTemp(String macAddresses[], int numAddresses);
 
 static const unsigned char PROGMEM wifi[] =
 {
@@ -227,7 +245,7 @@ static const unsigned char PROGMEM logo_avimex [] = {
 
 void pantalla_principal() {
   tft.fillScreen(ST77XX_BLACK); // Limpia la pantalla con color negro
-  tft.drawBitmap(5, 5, logo_avimex, 80, 23, ST77XX_WHITE);  // logo avimex
+  tft.drawBitmap(5, 5, logo_avimex, 80, 23, ST77XX_BLUE);  // logo avimex
   tft.drawFastHLine(0, 45, 160, ST77XX_BLUE); // x,y
   tft.drawFastHLine(0, 46, 160, ST77XX_BLUE); // x,y
 }
@@ -245,15 +263,14 @@ void ButtonWifiTask(void * parameter) {
         isPressing = true;
         buttonPressTime = millis();
       } else if (millis() - buttonPressTime > 7000) {
-        Serial.println("Botón presionado por 7 segundos. Borrando credenciales WiFi y reiniciando WiFiManager...");
+        Serial.println("Botón presionado por 7 segundos. Borrando credenciales WiFi y reiniciando Equipo...");
         isPressing = false;
-
         // Desconectar y borrar credenciales WiFi anteriores
         WiFi.disconnect(true);
         delay(1000); // Pequeña pausa para asegurar que se complete la desconexión
-
-        // Iniciar WiFiManager
-        startWiFiManager();
+        wiFiManager.erase();
+        delay(1000); // Pequeña pausa para asegurar que se complete la desconexión
+        ESP.restart();
       }
     } else {
       isPressing = false;
@@ -289,17 +306,19 @@ void parpadearFallaIconoWiFi(int veces) {
   tft.drawBitmap(140, 5, wifi, 16, 16, ST77XX_RED);
 }
 
-void enviarDatos(String temp, String hum) {
+String enviarDatos(String temp, String hum) {
+  String payload = ""; // Variable para almacenar el resultado del servidor
   // Asegúrate de que estás conectado a WiFi antes de intentar enviar datos
   if(WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String numero_dispositivo = "800"; // Ajusta según sea necesario
+    String numero_dispositivo = "572"; // Ajusta según sea necesario
     String mystring_status_pt100 = "OK"; // Ajusta según sea necesario
     String indicador_dispositivo = "2"; // Ajusta según sea necesario
 
-    String url = "http://95.216.228.161/mccr_sensores/recibe_avimex.ashx?t=" + temp + "&h=" + hum + "&d=" + numero_dispositivo + "&e=" + mystring_status_pt100 + "&c=0" + "&indicador=" + indicador_dispositivo;
-    
+    String url = "http://95.216.228.161/mccr_sensores/recibe_avimex.ashx?t=" + temp + "&d=" + numero_dispositivo + "&e=" + mystring_status_pt100 + "&c=0" + "&indicador=" + indicador_dispositivo;
+    Serial.println(url);
     http.begin(url); // Inicia la conexión
+    timerWrite(timer, 0); //reset timer (feed watchdog)
     int httpCode = http.GET(); // Realiza la solicitud GET
 
     if(httpCode > 0) {
@@ -307,20 +326,27 @@ void enviarDatos(String temp, String hum) {
       Serial.print("Código de respuesta: ");
       Serial.println(httpCode);
       if(httpCode == HTTP_CODE_OK) {
-        String payload = http.getString();
+        payload = http.getString();
         Serial.println(payload);
+        if (payload.endsWith("T")) {  // Verificar si el payload termina con 'T'
+          payload = payload.substring(0, payload.length() - 1);  // Remover la última letra
+        }
         parpadearIconoWiFi(3); // Hace que el icono de WiFi parpadee 3 veces
       }
     } else {
       Serial.print("Error en la solicitud: ");
       Serial.println(http.errorToString(httpCode));
       parpadearFallaIconoWiFi(3);
+
     }
 
     http.end(); // Cierra la conexión
   } else {
+    parpadearFallaIconoWiFi(3);
     Serial.println("No conectado a WiFi");
+    payload = "null";
   }
+  return payload; // Devuelve el resultado del servidor
 }
 
 void TakeTemp(String macAddresses[], int numAddresses) {
@@ -332,27 +358,33 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.setCursor(3, 80); // Ajusta las coordenadas según sea necesario
   tft.setTextColor(ST77XX_BLACK);
   tft.setTextSize(1);
-  tft.print("Temp:    ");
-  tft.print(temperature);
+  tft.print("Cong:    ");
+  tft.print(Temp1Str);
   tft.print("  °C");
 
   tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
-  tft.print("Hum:     ");
-  tft.print(humidity);
-  tft.print("  %");
+  tft.print("Refri:   ");
+  tft.print(Temp2Str);
+  tft.print("  °C");
+
+  Temp1Str = "";
+  Temp2Str = "";
+  TempPayload = "";
   temperature = "";
   humidity = "";
 
   for (int i = 0; i < foundDevices.getCount(); i++) {
     BLEAdvertisedDevice advertisedDevice = foundDevices.getDevice(i);
-
+    timerWrite(timer, 0); //reset timer (feed watchdog)
     for (int j = 0; j < numAddresses; j++) {
+      timerWrite(timer, 0); //reset timer (feed watchdog)
       if (String(advertisedDevice.getAddress().toString().c_str()) == macAddresses[j]) {
         if (advertisedDevice.haveServiceData()) {
           std::string serviceData = advertisedDevice.getServiceData();
           uint8_t* pData = (uint8_t*)serviceData.data();
           String hexStr;
           for (int k = 0; k < serviceData.length(); k++) {
+            timerWrite(timer, 0); //reset timer (feed watchdog)
             char buf[3];
             sprintf(buf, "%02X", pData[k]);
             hexStr += buf;
@@ -360,25 +392,40 @@ void TakeTemp(String macAddresses[], int numAddresses) {
 
           if (hexStr.length() >= 10) {
             // Extracción de la temperatura
-            String tempChars = hexStr.substring(8, 10);
+            String tempChars = hexStr.substring(7, 10);
             int16_t tempValue = strtol(tempChars.c_str(), NULL, 16);
-            if (tempValue & 0x80) {
-              tempValue = -1 * (~tempValue + 1);
-            }
+            if (tempValue & 0x800) { // Asumiendo que los datos son 12-bit, ajustar la máscara según el tamaño real de los datos
+              tempValue = tempValue | ~0xFFF; // Extender el signo para un entero de 16 bits
+          } 
             float tempResult = tempValue / 10.0;
             temperature += String(tempResult);
+            temperature += ",";
 
             // Extracción de la humedad
-            String humChars = hexStr.substring(11, 14); // Modificado para capturar los caracteres correctos
-            long humValue = strtol(humChars.c_str(), NULL, 16);
-            float humResult = humValue / 10.0;
-            humidity += String(humResult);
+            //String humChars = hexStr.substring(11, 14); // Modificado para capturar los caracteres correctos
+            //long humValue = strtol(humChars.c_str(), NULL, 16);
+            //float humResult = humValue / 10.0;
+            //humidity += String(humResult);
           }
         }
         break;
       }
     }
   }
+ String payload = enviarDatos(temperature, humidity);
+ if(payload != "null"){
+  TempPayload = payload;
+
+// Supongamos que TempPayload ya tiene el valor "22.7,22.7"
+char tempBuffer[20]; // Aumenta el tamaño del buffer si es necesario
+strcpy(tempBuffer, TempPayload.c_str()); // Copia el contenido de TempPayload a un buffer temporal
+
+char *ptr = strtok(tempBuffer, ","); // ptr apunta al primer dato antes de la coma
+  Temp1 = atof(ptr); // Convierte el primer dato a float y lo asigna a Temp1
+  Temp1Str = String(Temp1, 1);
+  ptr = strtok(NULL, ","); // ptr ahora apunta al segundo dato después de la coma
+  Temp2 = atof(ptr); // Convierte el segundo dato a float y lo asigna a Temp2
+  Temp2Str = String(Temp2, 1);
 
   // Imprimir temperatura y humedad
   Serial.print("Temperatura: ");
@@ -391,31 +438,26 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.setCursor(3, 80); // Ajusta las coordenadas según sea necesario
   tft.setTextColor(ST77XX_WHITE);
   tft.setTextSize(1);
-  tft.print("Temp:    ");
-  tft.print(temperature);
+  tft.print("Cong:    ");
+  tft.print(Temp1Str);
   tft.print("  °C");
 
   tft.setCursor(4, 100); // Ajusta las coordenadas para la humedad
-  tft.print("Hum:     ");
-  tft.print(humidity);
-  tft.print("  %");
+  tft.print("Refri:   ");
+  tft.print(Temp2Str);
+  tft.print("  °C");
 
-  enviarDatos(temperature, humidity);
+}
 }
 
-void TakeTempTask(void * parameter) {
-  for (;;) {
-    TakeTemp(macAddresses, numberOfDevices);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-}
+
 
 void setup() {  
   pinMode(buttonPin, INPUT_PULLUP);
 
   Serial.begin(115200);
   tft.initR(INITR_BLACKTAB);   // Inicializa la pantalla TFT
-  tft.setRotation(1);          // Establece la orientación de la pantalla
+  tft.setRotation(3);          // Establece la orientación de la pantalla
   tft.fillScreen(ST77XX_BLACK);
   tft.drawBitmap(140, 25, wifi_falla, 16, 16, ST77XX_CYAN);   // despliega wifi falla
   tft.drawBitmap(15, 20, logo_control_120px, 120, 31, ST77XX_WHITE);
@@ -437,6 +479,12 @@ void setup() {
   pBLEScan->setWindow(99);
   WiFi.mode(WIFI_STA);
 
+  //*************************************** WDT ***************************************
+    timer = timerBegin(0, 80, true);                  //timer 0, div 80
+    timerAttachInterrupt(timer, &resetModule, true);  //attach callback
+    timerAlarmWrite(timer, wdtTimeout * 1000, false); //set time in us
+    timerAlarmEnable(timer);                          //enable interrupt
+
   // Intenta conectar automáticamente con las credenciales guardadas
   if (!wiFiManager.autoConnect("ControlWareTemperatureSensor", "12345678")) {
     Serial.println("Failed to connect and hit timeout");
@@ -456,9 +504,9 @@ void setup() {
 
   // Crear tareas para FreeRTOS
   xTaskCreatePinnedToCore(ButtonWifiTask, "ButtonWifiTask", 10000, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(TakeTempTask, "TakeTempTask", 10000, NULL, 1, NULL, 1);
 }
 
 void loop() {
-  // Vacío, ya que la lógica está en las tareas de FreeRTOS
+    timerWrite(timer, 0); //reset timer (feed watchdog)
+    TakeTemp(macAddresses, numberOfDevices);
 }

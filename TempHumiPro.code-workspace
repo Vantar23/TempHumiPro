@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "TempHumPro_Ethernet",
+			"path": "../../PlatformIO/Projects/TempHumPro_Ethernet"
+		}
+	],
+	"settings": {}
+}
