@@ -20,7 +20,7 @@ WebServer server(80);
 #define TFT_MOSI   19  // DIN
 #define TFT_SCLK   18  // CLK
 
-String payload;
+String payloadStr;
 
 // Configuración de botón y escaneo BLE
 const int buttonPin = 35;              // Pin del botón
@@ -29,7 +29,7 @@ bool isPressing = false;               // Estado del botón (presionado/no presi
 int scanTime = 30;                     // Tiempo de escaneo en segundos
 BLEScan* pBLEScan;                     // Puntero a la instancia de BLEScan
 // Dispositivos Bluetooth LE a buscar
-String macAddresses[] = {"ef:58:67:9c:58:32"};
+String macAddresses[] = {"d7:e1:23:32:c4:5a", "e4:41:ad:7c:63:54"};
 String humidityMacAddresses[] = {""};
 int numberOfDevices = sizeof(macAddresses) / sizeof(macAddresses[0]);
 int numberOfHumidityDevices = sizeof(humidityMacAddresses) / sizeof(humidityMacAddresses[0]);
@@ -337,8 +337,8 @@ void enviarDatos(String temp, String hum) {
       Serial.print("Código de respuesta: ");
       Serial.println(httpCode);
       if(httpCode == HTTP_CODE_OK) {
-        payload = http.getString();
-        Serial.println(payload);
+        String payload = http.getString();
+        payloadStr = payload;
         parpadearIconoWiFi(3); // Hace que el icono de WiFi parpadee 3 veces
       }
     } else {
@@ -413,6 +413,9 @@ void TakeTemp(String macAddresses[], int numAddresses) {
   tft.print("Temp:    ");
   tft.print(temperature);
   tft.print("  °C");
+    enviarDatos(temperature, humidity);
+  Serial.print("el Payload es:");
+  Serial.print(payloadStr);
 }
 
 void TakeHumidity(String humidityMacAddresses[], int numHumidityAddresses) {
@@ -472,8 +475,7 @@ void TakeHumidity(String humidityMacAddresses[], int numHumidityAddresses) {
   tft.print("Hum:     ");
   tft.print(humidity);
   tft.print("  %");
-  enviarDatos(temperature, humidity);
-  Serial.print(payload);
+
 }
 
 void TakeTempTask(void * parameter) {
@@ -484,7 +486,7 @@ void TakeTempTask(void * parameter) {
           pantallaPrincipal = true;
       }
       TakeTemp(macAddresses, numberOfDevices); // Llama primero a la función para tomar la temperatura
-      TakeHumidity(humidityMacAddresses, numberOfHumidityDevices); // Luego llama a la función para tomar la humedad
+      //TakeHumidity(humidityMacAddresses, numberOfHumidityDevices); // Luego llama a la función para tomar la humedad
     } else {
        
        Serial.println("Reintentando conexión wifi...");
